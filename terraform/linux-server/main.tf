@@ -15,7 +15,7 @@ provider "aws" {
 
 variable "region" {
   type    = string
-  default = "ap-south-1"
+  default = "ap-southeast-1"
 }
 variable "ssh_public_key_path" {
   type    = string
@@ -23,7 +23,7 @@ variable "ssh_public_key_path" {
 }
 variable "my_ip_cidr" {
   type        = string
-  description = "Your public IP in CIDR form, e.g. 203.0.113.7/32 (curl -s https://checkip.amazonaws.com)"
+  description = "Your public IP in CIDR form, e.g. 203.0.113.7/32"
 }
 
 data "aws_ami" "ubuntu" {
@@ -35,8 +35,34 @@ data "aws_ami" "ubuntu" {
   }
 }
 
-data "aws_vpc" "default" {
-  default = true
+# This account has no default VPC, so the practice server gets its own tiny public VPC.
+resource "aws_vpc" "q3" {
+  cidr_block           = "10.50.0.0/16"
+  enable_dns_hostnames = true
+  tags                 = { Name = "shoplite-linux-server" }
+}
+
+resource "aws_internet_gateway" "q3" {
+  vpc_id = aws_vpc.q3.id
+}
+
+resource "aws_subnet" "q3" {
+  vpc_id                  = aws_vpc.q3.id
+  cidr_block              = "10.50.1.0/24"
+  map_public_ip_on_launch = true
+}
+
+resource "aws_route_table" "q3" {
+  vpc_id = aws_vpc.q3.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.q3.id
+  }
+}
+
+resource "aws_route_table_association" "q3" {
+  subnet_id      = aws_subnet.q3.id
+  route_table_id = aws_route_table.q3.id
 }
 
 resource "aws_key_pair" "this" {
@@ -46,7 +72,7 @@ resource "aws_key_pair" "this" {
 
 resource "aws_security_group" "server" {
   name   = "shoplite-linux-server"
-  vpc_id = data.aws_vpc.default.id
+  vpc_id = aws_vpc.q3.id
 
   dynamic "ingress" {
     for_each = [22, 80, 443, 8000, 5432]
@@ -69,6 +95,7 @@ resource "aws_instance" "server" {
   ami                    = data.aws_ami.ubuntu.id
   instance_type          = "t3.small"
   key_name               = aws_key_pair.this.key_name
+  subnet_id              = aws_subnet.q3.id
   vpc_security_group_ids = [aws_security_group.server.id]
   metadata_options { http_tokens = "required" }
   root_block_device {
@@ -78,7 +105,8 @@ resource "aws_instance" "server" {
   user_data = <<-EOT
     #!/bin/bash
     apt-get update -y
-    apt-get install -y docker.io docker-compose-v2 make git acl ufw
+    apt-get install -y make git acl ufw curl
+    curl -fsSL https://get.docker.com | sh
     usermod -aG docker ubuntu
   EOT
   tags = { Name = "shoplite-linux-server" }

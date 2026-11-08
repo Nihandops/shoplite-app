@@ -9,7 +9,7 @@ terraform {
   # bucket is passed at init time:  terraform init -backend-config="bucket=shoplite-tfstate-<ACCOUNT_ID>"
   backend "s3" {
     key          = "shoplite/main.tfstate"
-    region       = "ap-south-1"
+    region       = "ap-southeast-1"
     encrypt      = true
     use_lockfile = true
   }

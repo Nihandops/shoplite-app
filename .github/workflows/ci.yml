@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  AWS_REGION: ap-south-1
+  AWS_REGION: ap-southeast-1
   IMAGE_PREFIX: shoplite
 
 concurrency:

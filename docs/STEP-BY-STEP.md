@@ -139,7 +139,7 @@ Then `terraform destroy -var "my_ip_cidr=0.0.0.0/32"` in `terraform/linux-server
 ### 4.1 AWS credentials
 Create an IAM user (or SSO) with AdministratorAccess **for Terraform on your laptop only**, then:
 ```bash
-aws configure            # region: ap-south-1, output: json
+aws configure            # region: ap-southeast-1, output: json
 aws sts get-caller-identity
 ```
 
@@ -352,7 +352,7 @@ kubectl delete -n argocd -f ~/work/shoplite-gitops/bootstrap/root-app.yaml   # o
 cd ~/work/shoplite-app/terraform && terraform destroy                          # nightly + after grading
 cd bootstrap && terraform destroy                                              # ONLY at the very end (removes state bucket + budget)
 ```
-Rough cost while running (ap-south-1): 2×t3.large + 1×t3.medium + NAT + ALB ≈ USD 0.35/hour. Destroying when you stop
+Rough cost while running (ap-southeast-1): 2×t3.large + 1×t3.medium + NAT + ALB ≈ USD 0.35/hour. Destroying when you stop
 for the day keeps the whole project around USD 10–15.
 
 ## Troubleshooting

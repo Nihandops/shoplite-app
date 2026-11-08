@@ -1,6 +1,6 @@
 variable "region" {
   type    = string
-  default = "ap-south-1"
+  default = "ap-southeast-1"
 }
 
 variable "budget_email" {
