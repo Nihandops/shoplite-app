@@ -13,9 +13,9 @@ echo '{"level":"INFO","service":"shoplite","message":"permission test"}' | sudo 
 
 echo "== evidence =="
 ls -ld /var/log/shoplite
-ls -l /var/log/shoplite
-getfacl /var/log/shoplite
-getfacl /var/log/shoplite/app.log
+sudo ls -l /var/log/shoplite
+sudo getfacl /var/log/shoplite
+sudo getfacl /var/log/shoplite/app.log
 sudo -u deploy cat /var/log/shoplite/app.log && echo "deploy (ops) CAN read"
 sudo -u nobody cat /var/log/shoplite/app.log 2>&1 || echo "nobody (not ops) CANNOT read"
 # Why not 777? -> 777 lets EVERY local user/process read, modify or delete the logs (tampering, info leaks), violating least privilege.
