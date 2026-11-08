@@ -14,7 +14,7 @@ data "aws_ami" "ubuntu" {
 # ---------------- security group (no ingress from the internet at all) ----------------
 resource "aws_security_group" "nodes" {
   name        = "${var.name}-k8s-nodes"
-  description = "Kubernetes nodes: intra-cluster only; ALB->NodePort rule is added by the alb module"
+  description = "Kubernetes nodes: intra-cluster only; ALBtoNodePort rule is added by the alb module"
   vpc_id      = var.vpc_id
   tags        = { Name = "${var.name}-k8s-nodes" }
 }
@@ -73,7 +73,7 @@ locals {
   nodes = merge(
     { "control-plane" = { type = var.control_plane_instance_type, subnet = 0, role = "control-plane" } },
     { for i in range(var.worker_count) : "worker-${i + 1}" => {
-      type = var.worker_instance_type, subnet = i % 2, role = "worker" } }
+    type = var.worker_instance_type, subnet = i % 2, role = "worker" } }
   )
 }
 
@@ -105,8 +105,8 @@ resource "aws_instance" "node" {
   EOT
 
   tags = {
-    Name       = "${var.name}-${each.key}"
-    k8s-role   = each.value.role
+    Name     = "${var.name}-${each.key}"
+    k8s-role = each.value.role
   }
 
   lifecycle {

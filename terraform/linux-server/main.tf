@@ -109,7 +109,7 @@ resource "aws_instance" "server" {
     curl -fsSL https://get.docker.com | sh
     usermod -aG docker ubuntu
   EOT
-  tags = { Name = "shoplite-linux-server" }
+  tags      = { Name = "shoplite-linux-server" }
 }
 
 output "public_ip" { value = aws_instance.server.public_ip }

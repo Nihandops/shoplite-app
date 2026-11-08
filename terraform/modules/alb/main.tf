@@ -27,7 +27,7 @@ resource "aws_vpc_security_group_egress_rule" "to_nodes" {
   from_port                    = var.ingress_node_port
   to_port                      = var.ingress_node_port
   ip_protocol                  = "tcp"
-  description                  = "ALB -> ingress controller NodePort only"
+  description                  = "ALB to ingress controller NodePort only"
 }
 
 # the ONLY way into the nodes from outside the cluster
