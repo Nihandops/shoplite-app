@@ -1,0 +1,74 @@
+# On pull requests that touch terraform/: fmt + validate + plan, and post the plan as a PR comment.
+name: terraform-plan
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ["terraform/**"]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+env:
+  AWS_REGION: ap-south-1
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Public key for the plan (not a secret)
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ vars.SSH_PUBLIC_KEY }}" > ~/.ssh/shoplite.pub
+      - name: terraform fmt
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+      - name: terraform init
+        run: terraform init -input=false -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+      - name: terraform validate
+        run: terraform validate -no-color
+      - name: terraform plan
+        id: plan
+        run: terraform plan -input=false -no-color -lock=false -out=tfplan > plan.txt 2>&1 || (cat plan.txt; exit 1)
+      - name: Comment plan on the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let plan = fs.readFileSync('terraform/plan.txt', 'utf8');
+            if (plan.length > 60000) plan = plan.slice(-60000);
+            const marker = '<!-- shoplite-terraform-plan -->';
+            const body = `${marker}
+            ### Terraform plan — \`${{ github.event.pull_request.head.sha }}\`
+            fmt: \`${{ steps.fmt.outcome }}\`
+            <details><summary>Show plan</summary>
+
+            \`\`\`hcl
+            ${plan}
+            \`\`\`
+            </details>`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number });
+            const old = comments.find(c => c.body.includes(marker));
+            if (old) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: old.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+      - name: Fail if fmt failed
+        if: steps.fmt.outcome == 'failure'
+        run: exit 1

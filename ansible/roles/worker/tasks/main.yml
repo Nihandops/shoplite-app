@@ -1,0 +1,11 @@
+- name: Kubeadm join (only once)
+  ansible.builtin.command: "{{ hostvars[groups['control_plane'][0]]['control_plane_join_command'] }}"
+  args:
+    creates: /etc/kubernetes/kubelet.conf
+
+- name: Label as worker
+  delegate_to: "{{ groups['control_plane'][0] }}"
+  ansible.builtin.command: >
+    kubectl --kubeconfig /etc/kubernetes/admin.conf label node {{ ansible_hostname }}
+    node-role.kubernetes.io/worker= --overwrite
+  changed_when: false

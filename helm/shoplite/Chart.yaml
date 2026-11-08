@@ -1,0 +1,6 @@
+apiVersion: v2
+name: shoplite
+description: ShopLite e-commerce backend (web, catalog-api, order-worker, postgres, redis)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

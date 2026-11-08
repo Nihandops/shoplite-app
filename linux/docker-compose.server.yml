@@ -1,0 +1,9 @@
+# Server override for Q3: Docker-published ports BYPASS UFW (Docker writes its own iptables rules),
+# so on the hardened server we publish ONLY the web container on port 80 and nothing else.
+# Usage: docker compose -f docker-compose.yml -f linux/docker-compose.server.yml up -d --wait
+services:
+  catalog-api:
+    ports: !reset []
+  web:
+    ports: !override
+      - "80:8080"

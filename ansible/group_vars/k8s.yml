@@ -1,0 +1,8 @@
+k8s_minor: "1.33"
+pod_cidr: "10.244.0.0/16"
+service_cidr: "10.96.0.0/12"
+calico_version: "v3.30.3"
+ecr_credential_provider_version: "v1.33.0"
+hardening_deploy_user: deploy
+hardening_ops_group: ops
+kubeconfig_local_path: "{{ playbook_dir }}/kubeconfig"

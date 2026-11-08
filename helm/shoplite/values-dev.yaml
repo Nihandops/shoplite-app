@@ -1,0 +1,14 @@
+environment: dev
+ingress:
+  pathPrefix: /dev
+web:
+  replicas: 1
+catalogApi:
+  replicas: 2
+  logLevel: DEBUG
+orderWorker:
+  hpa:
+    minReplicas: 1
+    maxReplicas: 2
+postgres:
+  storage: 1Gi

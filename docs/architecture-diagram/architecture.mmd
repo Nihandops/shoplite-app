@@ -1,0 +1,59 @@
+flowchart TB
+  user([User browser]) -->|HTTP 80/443| alb
+
+  subgraph aws[AWS ap-south-1 - VPC 10.0.0.0/16 - 2 AZs]
+    subgraph pub[Public subnets 10.0.0.0/24, 10.0.1.0/24]
+      alb[Application Load Balancer]
+      nat[NAT Gateway]
+    end
+    subgraph priv[Private subnets 10.0.10.0/24, 10.0.11.0/24]
+      cp[control-plane EC2<br/>kubeadm, etcd, API]
+      subgraph workers[worker-1 / worker-2 EC2]
+        traefik[Traefik ingress<br/>NodePort 30080]
+        subgraph ns[namespace shoplite / shoplite-dev]
+          web[web<br/>nginx x2]
+          api[catalog-api x2<br/>PDB minAvailable 1]
+          worker[order-worker<br/>HPA 1-4]
+          pg[(postgres<br/>StatefulSet + PVC)]
+          redis[(redis<br/>orders:pending)]
+        end
+        subgraph mon[namespace monitoring]
+          prom[Prometheus]
+          am[Alertmanager]
+          graf[Grafana]
+          loki[Loki]
+          tempo[Tempo]
+          alloy[Alloy]
+        end
+        argo[ArgoCD]
+      end
+    end
+    ecr[(Amazon ECR<br/>web, catalog-api, order-worker)]
+    s3[(S3 tfstate + lockfile)]
+    ssm[SSM Session Manager]
+  end
+
+  alb -->|30080| traefik
+  traefik -->|/| web
+  traefik -->|/api| api
+  api -->|SQL| pg
+  api -->|LPUSH + traceparent| redis
+  worker -->|BRPOP| redis
+  worker -->|UPDATE status| pg
+  api -. OTLP .-> tempo
+  worker -. OTLP .-> tempo
+  prom -. scrape /metrics .-> api
+  prom -. scrape /metrics .-> worker
+  alloy -. pod logs .-> loki
+  prom --> am
+  am -->|Slack| slack([Slack #shoplite-alerts])
+  graf -->|query| prom
+  graf -->|query| loki
+  graf -->|query| tempo
+
+  dev([Developer]) -->|git push| gh[GitHub Actions<br/>lint, test, build, Trivy]
+  gh -->|OIDC push :sha| ecr
+  gh -->|commit image.tag| gitops[(shoplite-gitops repo)]
+  argo -->|watch| gitops
+  argo -->|sync| ns
+  admin([Admin]) -->|SSH/6443 over SSM| ssm --> cp

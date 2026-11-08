@@ -1,0 +1,78 @@
+# helm upgrade --install alloy grafana/alloy -n monitoring -f this-file
+# Collects ALL pod logs through the Kubernetes API, parses the JSON fields of ShopLite logs,
+# and ships them to Loki. (Promtail is end-of-life; Alloy is its replacement.)
+controller:
+  type: deployment
+  replicas: 1
+alloy:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+  configMap:
+    content: |
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_node_name"]
+          target_label  = "node"
+        }
+      }
+
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.process.shoplite.receiver]
+      }
+
+      loki.process "shoplite" {
+        forward_to = [loki.write.default.receiver]
+
+        // ShopLite services log JSON: timestamp, level, service, message, trace_id
+        stage.match {
+          selector = "{namespace=~\"shoplite.*\"}"
+
+          stage.json {
+            expressions = {
+              level     = "level",
+              service   = "service",
+              trace_id  = "trace_id",
+              timestamp = "timestamp",
+            }
+          }
+          stage.timestamp {
+            source = "timestamp"
+            format = "RFC3339"
+          }
+          stage.labels {
+            values = { level = "", service = "" }
+          }
+          stage.structured_metadata {
+            values = { trace_id = "" }
+          }
+        }
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push"
+        }
+      }

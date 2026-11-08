@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-worker
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "order-worker") | nindent 4 }}
+spec:
+  # replicas are owned by the HPA
+  selector:
+    matchLabels:
+      {{- include "shoplite.selector" (dict "root" . "component" "order-worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "shoplite.labels" (dict "root" . "component" "order-worker") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        runAsUser: 10001
+        runAsGroup: 10001
+      # SIGTERM -> stop taking new messages, finish in-flight orders, exit
+      terminationGracePeriodSeconds: {{ .Values.orderWorker.terminationGracePeriodSeconds }}
+      containers:
+        - name: order-worker
+          image: {{ include "shoplite.image" (dict "root" . "repo" .Values.orderWorker.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef: { name: shoplite-config }
+          env:
+            - { name: SERVICE_NAME, value: order-worker }
+            - { name: METRICS_PORT, value: {{ .Values.orderWorker.metricsPort | quote }} }
+            {{- include "shoplite.appEnv" . | nindent 12 }}
+          ports:
+            - { name: metrics, containerPort: {{ .Values.orderWorker.metricsPort }} }
+          livenessProbe:
+            httpGet: { path: /metrics, port: metrics }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.orderWorker.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-worker-metrics
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "order-worker") | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "shoplite.selector" (dict "root" . "component" "order-worker") | nindent 4 }}
+  ports:
+    - { name: metrics, port: {{ .Values.orderWorker.metricsPort }}, targetPort: metrics }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order-worker
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "order-worker") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order-worker
+  minReplicas: {{ .Values.orderWorker.hpa.minReplicas }}
+  maxReplicas: {{ .Values.orderWorker.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.orderWorker.hpa.targetCPUUtilizationPercentage }}
+{{- if .Values.observability.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: order-worker
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "order-worker") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "shoplite.selector" (dict "root" . "component" "order-worker") | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.observability.serviceMonitor.interval }}
+{{- end }}

@@ -1,0 +1,15 @@
+# Applied by the ArgoCD Application "shoplite-monitoring" (see shoplite-gitops/apps).
+# Dashboards are plain JSON files in Git; the Grafana sidecar loads every ConfigMap labelled grafana_dashboard=1.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: monitoring
+resources:
+  - alert-rules/shoplite-alerts.yaml
+configMapGenerator:
+  - name: shoplite-dashboards
+    files:
+      - dashboards/shoplite-golden-signals.json
+    options:
+      disableNameSuffixHash: true
+      labels:
+        grafana_dashboard: "1"

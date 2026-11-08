@@ -1,0 +1,94 @@
+# Base values. Environment overrides live in values-dev.yaml / values-prod.yaml here,
+# and (for GitOps) in shoplite-gitops/envs/<env>/values.yaml — that is where CI writes image.tag.
+environment: dev
+
+image:
+  registry: ""            # e.g. 123456789012.dkr.ecr.ap-south-1.amazonaws.com
+  tag: latest             # CI sets the short git SHA
+  pullPolicy: IfNotPresent
+
+# Pod-level security applied to every ShopLite pod
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+ingress:
+  enabled: true
+  className: traefik
+  host: ""                # empty = any host (the ALB DNS name)
+  pathPrefix: ""          # "" -> served at /;  "/dev" -> served at /dev/ (dev env on the same ALB)
+
+web:
+  replicas: 2
+  repository: shoplite/web
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits:   { cpu: 200m, memory: 64Mi }
+
+catalogApi:
+  replicas: 2
+  repository: shoplite/catalog-api
+  port: 8000
+  logLevel: INFO
+  dbPoolMax: 10
+  pdb:
+    minAvailable: 1
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+  chaos:
+    latencyMs: 0          # CHAOS_LATENCY_MS
+    errorRate: 0          # CHAOS_ERROR_RATE (0.1 = 10 %)
+
+orderWorker:
+  repository: shoplite/order-worker
+  concurrency: 4
+  metricsPort: 9100
+  terminationGracePeriodSeconds: 60   # an order takes 1-2 s (up to ~6 s with CHAOS_SLOW_DB)
+  hpa:
+    minReplicas: 1
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 70
+  resources:
+    requests: { cpu: 100m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+  chaos:
+    memoryLeak: false     # CHAOS_MEMORY_LEAK
+    slowDb: false         # CHAOS_SLOW_DB
+
+postgres:
+  image: postgres:16-alpine
+  database: shoplite
+  storage: 2Gi
+  storageClass: ""        # "" = cluster default (local-path)
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+redis:
+  image: redis:7-alpine
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 250m, memory: 128Mi }
+
+# DB credentials are NEVER in Git. Create the Secret out-of-band:
+#   scripts/create-db-secret.sh <namespace>
+# It must contain keys: username, password
+db:
+  existingSecret: shoplite-db
+
+observability:
+  otlpEndpoint: http://tempo.monitoring.svc.cluster.local:4318
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+
+networkPolicy:
+  enabled: true

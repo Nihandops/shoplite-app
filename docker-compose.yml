@@ -1,0 +1,92 @@
+name: shoplite
+
+x-app-env: &app-env
+  ENVIRONMENT: local
+  LOG_LEVEL: INFO
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_NAME: ${POSTGRES_DB:-shoplite}
+  DB_USER: ${POSTGRES_USER:-shoplite}
+  DB_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  QUEUE_NAME: orders:pending
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-shoplite}
+      POSTGRES_USER: ${POSTGRES_USER:-shoplite}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  catalog-api:
+    build: ./services/catalog-api
+    image: shoplite/catalog-api:local
+    environment:
+      <<: *app-env
+      SERVICE_NAME: catalog-api
+      CHAOS_LATENCY_MS: ${CHAOS_LATENCY_MS:-0}
+      CHAOS_ERROR_RATE: ${CHAOS_ERROR_RATE:-0}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  order-worker:
+    build: ./services/order-worker
+    image: shoplite/order-worker:local
+    environment:
+      <<: *app-env
+      SERVICE_NAME: order-worker
+      CHAOS_MEMORY_LEAK: ${CHAOS_MEMORY_LEAK:-false}
+      CHAOS_SLOW_DB: ${CHAOS_SLOW_DB:-false}
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      catalog-api:          # API creates the schema + seed on start
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./services/web
+      args:
+        APP_VERSION: local
+    image: shoplite/web:local
+    environment:
+      API_UPSTREAM: http://catalog-api:8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      catalog-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

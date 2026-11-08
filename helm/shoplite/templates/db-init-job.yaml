@@ -1,0 +1,40 @@
+# Creates the schema and seeds >= 10 products. Idempotent (advisory lock + IF NOT EXISTS).
+# Runs after every sync (ArgoCD PostSync hook / Helm post-install,post-upgrade hook).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "db-init") | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "shoplite.labels" (dict "root" . "component" "db-init") | nindent 8 }}
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+        - name: db-init
+          image: {{ include "shoplite.image" (dict "root" . "repo" .Values.catalogApi.repository) }}
+          args: ["python", "-m", "app", "init-db"]
+          envFrom:
+            - configMapRef: { name: shoplite-config }
+          env:
+            - { name: SERVICE_NAME, value: db-init }
+            {{- include "shoplite.appEnv" . | nindent 12 }}
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}

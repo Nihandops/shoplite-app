@@ -1,0 +1,128 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: shoplite-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: shoplite
+spec:
+  groups:
+    - name: shoplite.golden-signals
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            sum by (namespace) (rate(http_requests_total{namespace=~"shoplite.*", status=~"5.."}[5m]))
+              /
+            sum by (namespace) (rate(http_requests_total{namespace=~"shoplite.*"}[5m]))
+              > 0.05
+          for: 5m
+          labels:
+            severity: critical
+            team: shoplite
+          annotations:
+            summary: "HTTP 5xx rate above 5% in {{ $labels.namespace }}"
+            description: "{{ $value | humanizePercentage }} of requests are failing with 5xx for 5 minutes."
+            runbook_url: "https://github.com/Nihandops/shoplite-app/blob/main/monitoring/runbooks/high-error-rate.md"
+            dashboard: "/d/shoplite-golden?var-namespace={{ $labels.namespace }}"
+
+        - alert: HighLatency
+          expr: |
+            histogram_quantile(0.95,
+              sum by (namespace, route, le) (rate(http_request_duration_seconds_bucket{namespace=~"shoplite.*"}[5m]))
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: shoplite
+          annotations:
+            summary: "p95 latency above 1s on {{ $labels.route }} ({{ $labels.namespace }})"
+            description: "p95 is {{ $value | humanizeDuration }} for 5 minutes."
+            runbook_url: "https://github.com/Nihandops/shoplite-app/blob/main/monitoring/runbooks/high-latency.md"
+            dashboard: "/d/shoplite-golden?var-namespace={{ $labels.namespace }}"
+
+        - alert: QueueBacklog
+          expr: max by (namespace) (order_queue_depth{namespace=~"shoplite.*"}) > 50
+          for: 10m
+          labels:
+            severity: warning
+            team: shoplite
+          annotations:
+            summary: "orders:pending backlog above 50 in {{ $labels.namespace }}"
+            description: "{{ $value }} orders waiting for 10 minutes — workers are not keeping up."
+            runbook_url: "https://github.com/Nihandops/shoplite-app/blob/main/monitoring/runbooks/queue-backlog.md"
+            dashboard: "/d/shoplite-golden?var-namespace={{ $labels.namespace }}"
+
+        - alert: PodCrashLooping
+          expr: increase(kube_pod_container_status_restarts_total[10m]) > 0
+          for: 2m
+          labels:
+            severity: critical
+            team: shoplite
+          annotations:
+            summary: "{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) is restarting"
+            description: "{{ $value | printf \"%.0f\" }} restarts in the last 10 minutes."
+            runbook_url: "https://github.com/Nihandops/shoplite-app/blob/main/monitoring/runbooks/pod-crash-looping.md"
+
+        - alert: NodeDiskFilling
+          expr: |
+            (1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs"}
+                 / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs|nsfs"}) > 0.85
+          for: 5m
+          labels:
+            severity: warning
+            team: shoplite
+          annotations:
+            summary: "Disk {{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | humanizePercentage }} full"
+            description: "Filesystem usage above 85%."
+            runbook_url: "https://github.com/Nihandops/shoplite-app/blob/main/monitoring/runbooks/node-disk-filling.md"
+
+    # ---------------- Bonus 4: SLO for POST /orders (99% < 500 ms over 30 days) ----------------
+    - name: shoplite.slo.orders
+      rules:
+        - record: slo:orders_bad_ratio:rate5m
+          expr: |
+            1 - (
+              sum by (namespace) (rate(http_request_duration_seconds_bucket{route="/orders",method="POST",le="0.5"}[5m]))
+              /
+              sum by (namespace) (rate(http_request_duration_seconds_count{route="/orders",method="POST"}[5m]))
+            )
+        - record: slo:orders_bad_ratio:rate30m
+          expr: |
+            1 - (
+              sum by (namespace) (rate(http_request_duration_seconds_bucket{route="/orders",method="POST",le="0.5"}[30m]))
+              /
+              sum by (namespace) (rate(http_request_duration_seconds_count{route="/orders",method="POST"}[30m]))
+            )
+        - record: slo:orders_bad_ratio:rate1h
+          expr: |
+            1 - (
+              sum by (namespace) (rate(http_request_duration_seconds_bucket{route="/orders",method="POST",le="0.5"}[1h]))
+              /
+              sum by (namespace) (rate(http_request_duration_seconds_count{route="/orders",method="POST"}[1h]))
+            )
+        - record: slo:orders_bad_ratio:rate6h
+          expr: |
+            1 - (
+              sum by (namespace) (rate(http_request_duration_seconds_bucket{route="/orders",method="POST",le="0.5"}[6h]))
+              /
+              sum by (namespace) (rate(http_request_duration_seconds_count{route="/orders",method="POST"}[6h]))
+            )
+        - alert: OrdersSLOFastBurn
+          # 14.4x burn of a 1% error budget: 2% of the 30-day budget gone in 1h
+          expr: slo:orders_bad_ratio:rate1h > (14.4 * 0.01) and slo:orders_bad_ratio:rate5m > (14.4 * 0.01)
+          for: 2m
+          labels:
+            severity: critical
+            team: shoplite
+          annotations:
+            summary: "POST /orders SLO fast burn in {{ $labels.namespace }}"
+            runbook_url: "https://github.com/Nihandops/shoplite-app/blob/main/monitoring/runbooks/slo-orders-burn-rate.md"
+        - alert: OrdersSLOSlowBurn
+          expr: slo:orders_bad_ratio:rate6h > (6 * 0.01) and slo:orders_bad_ratio:rate30m > (6 * 0.01)
+          for: 15m
+          labels:
+            severity: warning
+            team: shoplite
+          annotations:
+            summary: "POST /orders SLO slow burn in {{ $labels.namespace }}"
+            runbook_url: "https://github.com/Nihandops/shoplite-app/blob/main/monitoring/runbooks/slo-orders-burn-rate.md"

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ShopLite</title>
+  <style>
+    :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#677084; --accent:#2f6fed; --ok:#1c8a4e; --warn:#b7791f; --bad:#c53030; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+    header { background:var(--ink); color:#fff; padding:16px 24px; display:flex; justify-content:space-between; align-items:center; }
+    header h1 { margin:0; font-size:20px; }
+    header small { color:#aab3c5; }
+    main { max-width:1000px; margin:24px auto; padding:0 16px; display:grid; gap:24px; grid-template-columns: 2fr 1fr; }
+    @media (max-width: 760px) { main { grid-template-columns: 1fr; } }
+    section { background:var(--card); border-radius:10px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    h2 { margin:0 0 12px; font-size:16px; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th, td { text-align:left; padding:8px 6px; border-bottom:1px solid #eceef2; }
+    input[type=number] { width:56px; padding:4px; }
+    button { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:6px 10px; cursor:pointer; }
+    button:disabled { opacity:.5; }
+    .status { font-weight:600; font-size:12px; padding:2px 8px; border-radius:10px; background:#eef1f6; }
+    .PENDING { color:var(--muted); } .PROCESSING { color:var(--warn); } .COMPLETED { color:var(--ok); } .FAILED { color:var(--bad); }
+    #msg { min-height:20px; color:var(--bad); font-size:13px; }
+    ul { list-style:none; padding:0; margin:0; font-size:14px; }
+    li { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #eceef2; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ShopLite</h1>
+    <small>build __APP_VERSION__</small>
+  </header>
+  <main>
+    <section>
+      <h2>Products</h2>
+      <div id="msg"></div>
+      <table>
+        <thead><tr><th>#</th><th>Name</th><th>Price</th><th>Qty</th><th></th></tr></thead>
+        <tbody id="products"><tr><td colspan="5">Loading…</td></tr></tbody>
+      </table>
+    </section>
+    <section>
+      <h2>My orders</h2>
+      <ul id="orders"><li>No orders yet</li></ul>
+    </section>
+  </main>
+  <script>
+    const API = "api"; // relative: works at / (prod) and /dev/ (dev) behind the same ALB
+    const orders = new Map();
+    const $ = (id) => document.getElementById(id);
+
+    async function loadProducts() {
+      try {
+        const res = await fetch(`${API}/products`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const items = await res.json();
+        $("products").innerHTML = items.map(p => `
+          <tr>
+            <td>${p.id}</td><td>${p.name}</td><td>$${p.price.toFixed(2)}</td>
+            <td><input type="number" min="1" value="1" id="q${p.id}"></td>
+            <td><button onclick="placeOrder(${p.id}, this)">Order</button></td>
+          </tr>`).join("");
+      } catch (e) { $("msg").textContent = "Could not load products: " + e.message; }
+    }
+
+    async function placeOrder(productId, btn) {
+      btn.disabled = true; $("msg").textContent = "";
+      try {
+        const quantity = parseInt($("q" + productId).value, 10) || 1;
+        const res = await fetch(`${API}/orders`, { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ product_id: productId, quantity }) });
+        if (res.status !== 201) throw new Error(`HTTP ${res.status}`);
+        const o = await res.json();
+        orders.set(o.id, { id: o.id, status: o.status, product_id: productId });
+        renderOrders();
+      } catch (e) { $("msg").textContent = "Order failed: " + e.message; }
+      finally { btn.disabled = false; }
+    }
+
+    function renderOrders() {
+      if (!orders.size) return;
+      $("orders").innerHTML = [...orders.values()].reverse().map(o =>
+        `<li><span>Order #${o.id} (product ${o.product_id})</span><span class="status ${o.status}">${o.status}</span></li>`).join("");
+    }
+
+    async function pollOrders() {
+      for (const o of orders.values()) {
+        if (o.status === "COMPLETED" || o.status === "FAILED") continue;
+        try {
+          const res = await fetch(`${API}/orders/${o.id}`);
+          if (res.ok) o.status = (await res.json()).status;
+        } catch (_) {}
+      }
+      renderOrders();
+    }
+
+    loadProducts();
+    setInterval(pollOrders, 1000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# /etc/ssh/sshd_config.d/99-shoplite-hardening.conf
+# Drop-in that overrides the distro defaults (Ubuntu 22.04/24.04 include sshd_config.d/*.conf first).
+# Validate before reloading:  sudo sshd -t && sudo systemctl reload ssh
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+PermitEmptyPasswords no
+UsePAM yes
+X11Forwarding no
+MaxAuthTries 3
+LoginGraceTime 30
+ClientAliveInterval 300
+ClientAliveCountMax 2
+AllowGroups ops sudo

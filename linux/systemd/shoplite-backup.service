@@ -1,0 +1,24 @@
+[Unit]
+Description=ShopLite nightly PostgreSQL backup (pg_dump)
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+StartLimitIntervalSec=1h
+StartLimitBurst=3
+
+[Service]
+Type=oneshot
+Environment=APP_DIR=/opt/shoplite-app
+Environment=BACKUP_DIR=/var/backups/shoplite
+ExecStart=/usr/local/bin/shoplite-backup.sh
+Restart=on-failure
+RestartSec=5min
+User=root
+Group=ops
+UMask=0027
+Nice=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

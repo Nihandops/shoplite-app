@@ -1,0 +1,13 @@
+environment: prod
+ingress:
+  pathPrefix: ""
+web:
+  replicas: 2
+catalogApi:
+  replicas: 2
+orderWorker:
+  hpa:
+    minReplicas: 1
+    maxReplicas: 4
+postgres:
+  storage: 5Gi

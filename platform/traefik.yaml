@@ -1,0 +1,31 @@
+# Ingress controller behind the ALB. The ALB forwards to NodePort 30080 on the workers.
+deployment:
+  replicas: 2
+service:
+  type: NodePort
+ports:
+  web:
+    nodePort: 30080
+  websecure:
+    expose:
+      default: false
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+providers:
+  kubernetesIngress:
+    enabled: true
+  kubernetesCRD:
+    enabled: true
+    allowCrossNamespace: false
+metrics:
+  prometheus:
+    serviceMonitor:
+      enabled: true
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits: { memory: 256Mi }
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: [ALL] }

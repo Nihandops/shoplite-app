@@ -1,0 +1,4 @@
+ShopLite {{ .Values.environment }} deployed to namespace {{ .Release.Namespace }} (image tag {{ .Values.image.tag }}).
+
+URL: http://<ALB DNS>{{ .Values.ingress.pathPrefix | default "" }}/
+Check: kubectl -n {{ .Release.Namespace }} get pods,hpa,pdb,netpol

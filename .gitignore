@@ -1,0 +1,13 @@
+.env
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+!*.tfvars.example
+kubeconfig*
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+ansible/inventory/hosts.ini
+*.pem

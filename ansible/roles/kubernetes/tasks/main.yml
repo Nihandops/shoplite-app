@@ -1,0 +1,54 @@
+- name: Kubernetes apt repository (pkgs.k8s.io)
+  ansible.builtin.deb822_repository:
+    name: kubernetes
+    types: deb
+    uris: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/"
+    suites: /
+    signed_by: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_minor }}/deb/Release.key"
+
+- name: Kubelet, kubeadm, kubectl
+  ansible.builtin.apt:
+    name: [kubelet, kubeadm, kubectl]
+    state: present
+    update_cache: true
+
+- name: Hold Kubernetes packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: [kubelet, kubeadm, kubectl]
+
+# kubelet pulls from private ECR using the node's instance profile
+- name: Ecr-credential-provider binary
+  ansible.builtin.get_url:
+    url: "https://artifacts.k8s.io/binaries/cloud-provider-aws/{{ ecr_credential_provider_version }}/linux/amd64/ecr-credential-provider-linux-amd64"
+    dest: /usr/local/bin/ecr-credential-provider
+    mode: "0755"
+
+- name: Credential provider config
+  ansible.builtin.copy:
+    dest: /etc/kubernetes/ecr-credential-provider.yaml
+    mode: "0644"
+    content: |
+      apiVersion: kubelet.config.k8s.io/v1
+      kind: CredentialProviderConfig
+      providers:
+        - name: Ecr-credential-provider
+          matchImages: ["*.dkr.ecr.*.amazonaws.com"]
+          defaultCacheDuration: "12h"
+          apiVersion: credentialprovider.kubelet.k8s.io/v1
+
+- name: Kubelet extra args (credential provider + node IP)
+  ansible.builtin.copy:
+    dest: /etc/default/kubelet
+    mode: "0644"
+    content: >
+      KUBELET_EXTRA_ARGS=--node-ip={{ private_ip }}
+      --image-credential-provider-config=/etc/kubernetes/ecr-credential-provider.yaml
+      --image-credential-provider-bin-dir=/usr/local/bin
+  notify: Restart kubelet
+
+- name: Kubelet enabled
+  ansible.builtin.service:
+    name: kubelet
+    enabled: true

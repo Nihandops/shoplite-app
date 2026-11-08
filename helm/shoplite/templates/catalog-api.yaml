@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: catalog-api
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "catalog-api") | nindent 4 }}
+spec:
+  replicas: {{ .Values.catalogApi.replicas }}
+  selector:
+    matchLabels:
+      {{- include "shoplite.selector" (dict "root" . "component" "catalog-api") | nindent 6 }}
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  template:
+    metadata:
+      labels:
+        {{- include "shoplite.labels" (dict "root" . "component" "catalog-api") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        runAsUser: 10001
+        runAsGroup: 10001
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: catalog-api
+          image: {{ include "shoplite.image" (dict "root" . "repo" .Values.catalogApi.repository) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef: { name: shoplite-config }
+          env:
+            - { name: SERVICE_NAME, value: catalog-api }
+            - { name: PORT, value: {{ .Values.catalogApi.port | quote }} }
+            {{- include "shoplite.appEnv" . | nindent 12 }}
+          ports:
+            - { name: http, containerPort: {{ .Values.catalogApi.port }} }
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.catalogApi.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-api
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "catalog-api") | nindent 4 }}
+spec:
+  selector:
+    {{- include "shoplite.selector" (dict "root" . "component" "catalog-api") | nindent 4 }}
+  ports:
+    - { name: http, port: {{ .Values.catalogApi.port }}, targetPort: http }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: catalog-api
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "catalog-api") | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.catalogApi.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "shoplite.selector" (dict "root" . "component" "catalog-api") | nindent 6 }}
+{{- if .Values.observability.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: catalog-api
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "catalog-api") | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "shoplite.selector" (dict "root" . "component" "catalog-api") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.observability.serviceMonitor.interval }}
+      enableHttp2: false
+{{- end }}

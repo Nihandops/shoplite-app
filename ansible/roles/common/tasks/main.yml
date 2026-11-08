@@ -1,0 +1,143 @@
+- name: Base packages
+  ansible.builtin.apt:
+    name: [acl, ufw, curl, gpg, apt-transport-https, ca-certificates, jq, python3-debian]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# ----- users & groups -----
+- name: Ops group
+  ansible.builtin.group:
+    name: "{{ hardening_ops_group }}"
+    state: present
+
+- name: Deploy user in ops
+  ansible.builtin.user:
+    name: "{{ hardening_deploy_user }}"
+    groups: "{{ hardening_ops_group }}"
+    append: true
+    shell: /bin/bash
+
+- name: Admin user (ubuntu) also in ops so AllowGroups keeps working
+  ansible.builtin.user:
+    name: ubuntu
+    groups: "{{ hardening_ops_group }}"
+    append: true
+
+- name: .ssh dir for deploy
+  ansible.builtin.file:
+    path: "/home/{{ hardening_deploy_user }}/.ssh"
+    state: directory
+    owner: "{{ hardening_deploy_user }}"
+    mode: "0700"
+
+- name: Deploy authorized_keys = same key as ubuntu
+  ansible.builtin.copy:
+    src: /home/ubuntu/.ssh/authorized_keys
+    dest: "/home/{{ hardening_deploy_user }}/.ssh/authorized_keys"
+    remote_src: true
+    owner: "{{ hardening_deploy_user }}"
+    group: "{{ hardening_deploy_user }}"
+    mode: "0600"
+
+# ----- SSH: no root, key-only -----
+- name: Sshd hardening drop-in (same file as linux/sshd_config)
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../linux/sshd_config"
+    dest: /etc/ssh/sshd_config.d/99-shoplite-hardening.conf
+    mode: "0644"
+    validate: /usr/sbin/sshd -t -f %s
+  notify: Reload ssh
+
+- name: Check for cloud-init sshd drop-in
+  ansible.builtin.stat:
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+  register: common_cloudinit_sshd
+
+- name: Neutralise cloud-init PasswordAuthentication yes
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+    regexp: '^PasswordAuthentication'
+    line: PasswordAuthentication no
+  when: common_cloudinit_sshd.stat.exists
+  notify: Reload ssh
+
+# ----- /var/log/shoplite permissions -----
+- name: /var/log/shoplite owned by root:ops, 2750
+  ansible.builtin.file:
+    path: /var/log/shoplite
+    state: directory
+    owner: root
+    group: "{{ hardening_ops_group }}"
+    mode: "2750"
+
+- name: Exactly one ACL rule (default ACL so new files are ops-readable)
+  ansible.posix.acl:
+    path: /var/log/shoplite
+    etype: group
+    entity: "{{ hardening_ops_group }}"
+    permissions: rX
+    default: true
+    state: present
+
+# ----- firewall: deny by default; 22/80/443 + intra-VPC/pod traffic Kubernetes needs -----
+- name: UFW must forward pod traffic (Kubernetes CNI)
+  ansible.builtin.lineinfile:
+    path: /etc/default/ufw
+    regexp: '^DEFAULT_FORWARD_POLICY='
+    line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+  notify: Reload ufw
+
+- name: UFW allow 22, 80, 443
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: ["22", "80", "443"]
+
+- name: UFW allow intra-cluster (VPC and pod CIDR) — the AWS security group is the outer wall
+  community.general.ufw:
+    rule: allow
+    src: "{{ item }}"
+  loop: ["{{ vpc_cidr }}", "{{ pod_cidr }}"]
+
+- name: UFW default deny incoming + enable
+  community.general.ufw:
+    state: enabled
+    direction: incoming
+    policy: deny
+
+# ----- Kubernetes prerequisites -----
+- name: Disable swap now
+  ansible.builtin.command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+  changed_when: true
+
+- name: Disable swap permanently
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'
+
+- name: Kernel modules for containerd/Kubernetes
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k8s.conf
+    content: "overlay\nbr_netfilter\n"
+    mode: "0644"
+
+- name: Load modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: [overlay, br_netfilter]
+
+- name: Sysctl for Kubernetes networking
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    sysctl_file: /etc/sysctl.d/99-kubernetes.conf
+    reload: true
+  loop:
+    - net.bridge.bridge-nf-call-iptables
+    - net.bridge.bridge-nf-call-ip6tables
+    - net.ipv4.ip_forward

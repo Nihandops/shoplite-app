@@ -1,0 +1,66 @@
+{{- if .Values.ingress.enabled }}
+{{- $prefix := .Values.ingress.pathPrefix | default "" | trimSuffix "/" }}
+{{- $mw := "" }}
+{{- if $prefix }}
+{{- $mw = printf "%s-shoplite-strip-prefix@kubernetescrd" .Release.Namespace }}
+# Path-prefixed environment (e.g. dev at /dev/) — Traefik strips the prefix before forwarding.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: shoplite-strip-prefix
+spec:
+  stripPrefix:
+    prefixes: [{{ $prefix | quote }}]
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: shoplite-add-slash
+spec:
+  redirectRegex:
+    regex: {{ printf "^(https?://[^/]+%s)$" $prefix | quote }}
+    replacement: "${1}/"
+    permanent: true
+---
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: shoplite
+  labels:
+    {{- include "shoplite.labels" (dict "root" . "component" "ingress") | nindent 4 }}
+  {{- if $prefix }}
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: {{ printf "%s-shoplite-add-slash@kubernetescrd,%s" .Release.Namespace $mw | quote }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - {{- if .Values.ingress.host }}
+      host: {{ .Values.ingress.host }}
+      {{- end }}
+      http:
+        paths:
+          # /api -> catalog-api (the API itself strips "/api", so no rewrite is needed)
+          - path: {{ printf "%s/api" $prefix }}
+            pathType: Prefix
+            backend:
+              service:
+                name: catalog-api
+                port: { number: {{ .Values.catalogApi.port }} }
+          # / -> web
+          - path: {{ printf "%s/" $prefix }}
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port: { number: 80 }
+          {{- if $prefix }}
+          - path: {{ $prefix }}
+            pathType: Exact
+            backend:
+              service:
+                name: web
+                port: { number: 80 }
+          {{- end }}
+{{- end }}

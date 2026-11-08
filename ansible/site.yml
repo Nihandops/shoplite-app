@@ -1,0 +1,37 @@
+# ShopLite cluster: hardening (Q3 on every node) -> containerd -> kubeadm -> join -> kubeconfig
+# Run:  ansible-playbook site.yml           (idempotent — safe to re-run)
+- name: Harden and prepare every node
+  hosts: k8s
+  become: true
+  roles:
+    - common
+    - containerd
+    - kubernetes
+
+- name: Bootstrap the control plane
+  hosts: control_plane
+  become: true
+  roles:
+    - control_plane
+
+- name: Join workers
+  hosts: workers
+  become: true
+  serial: 1
+  roles:
+    - worker
+
+- name: Verify the cluster
+  hosts: control_plane
+  become: true
+  tasks:
+    - name: Wait until all nodes are Ready
+      ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf wait --for=condition=Ready nodes --all --timeout=300s
+      changed_when: false
+    - name: Show nodes
+      ansible.builtin.command: kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes -o wide
+      register: nodes
+      changed_when: false
+    - name: Print nodes
+      ansible.builtin.debug:
+        var: nodes.stdout_lines
