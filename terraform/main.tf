@@ -44,5 +44,6 @@ resource "local_file" "ansible_inventory" {
     workers       = module.compute.workers
     vpc_cidr      = module.network.vpc_cidr
     ssh_key       = replace(pathexpand(var.ssh_public_key_path), ".pub", "")
+    bastion_ip    = var.use_bastion ? aws_instance.bastion[0].public_ip : ""
   })
 }
