@@ -1,6 +1,12 @@
-# Grafana UI served behind the Poridhi VS Code proxy at /proxy/3300/
+# Grafana published through the ALB -> Traefik at http://<ALB>/grafana/ (password-protected)
 grafana:
   grafana.ini:
     server:
-      root_url: "%(protocol)s://%(domain)s/proxy/3300/"
-      serve_from_sub_path: false
+      root_url: "%(protocol)s://%(domain)s/grafana/"
+      serve_from_sub_path: true
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    path: /grafana
+    pathType: Prefix
+    hosts: []
