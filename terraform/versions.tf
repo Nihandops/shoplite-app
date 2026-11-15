@@ -21,6 +21,7 @@ provider "aws" {
     tags = {
       project    = "shoplite"
       managed-by = "terraform"
+      owner      = "nihandops"
     }
   }
 }
