@@ -1,0 +1,6 @@
+# Grafana UI served behind the Poridhi VS Code proxy at /proxy/3000/
+grafana:
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/proxy/3000/"
+      serve_from_sub_path: false
