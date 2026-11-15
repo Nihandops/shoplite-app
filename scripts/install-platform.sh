@@ -21,7 +21,7 @@ helm repo add metrics-server https://kubernetes-sigs.github.io/metrics-server/ >
 helm repo update >/dev/null
 
 echo "==> local-path storage (default StorageClass)"
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.32/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml
 kubectl patch storageclass local-path -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
 
 echo "==> metrics-server (needed by the HPA)"
