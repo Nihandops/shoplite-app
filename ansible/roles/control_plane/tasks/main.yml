@@ -25,6 +25,13 @@
     group: ubuntu
     mode: "0600"
 
+- name: Calico CRDs (shipped separately since Calico 3.30)
+  ansible.builtin.command: >
+    kubectl --kubeconfig /etc/kubernetes/admin.conf apply --server-side --force-conflicts
+    -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/operator-crds.yaml
+  register: control_plane_crds
+  changed_when: "'serverside-applied' in control_plane_crds.stdout"
+
 - name: Calico operator (CNI with NetworkPolicy enforcement)
   ansible.builtin.command: >
     kubectl --kubeconfig /etc/kubernetes/admin.conf apply --server-side
