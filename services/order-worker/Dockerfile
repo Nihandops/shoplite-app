@@ -19,6 +19,7 @@ RUN python -m pytest -q
 
 # ---- stage 3: minimal non-root runtime ----
 FROM python:3.12-alpine AS runtime
+RUN apk upgrade --no-cache
 RUN addgroup -S -g 10001 app && adduser -S -D -H -u 10001 -G app app \
  && pip uninstall -y pip setuptools 2>/dev/null; rm -rf /root/.cache
 WORKDIR /app

@@ -68,7 +68,7 @@ jobs:
       contents: read
       id-token: write          # OIDC -> AWS, no long-lived keys
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         service: [web, catalog-api, order-worker]
     steps:
@@ -117,7 +117,7 @@ jobs:
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             aquasec/trivy:0.58.1 image \
-            --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress \
+            --exit-code 1 --severity CRITICAL --ignore-unfixed --no-progress --db-repository mirror.gcr.io/aquasec/trivy-db \
             "${{ steps.img.outputs.ref }}"
 
       - name: Push to ECR

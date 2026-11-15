@@ -8,6 +8,8 @@ RUN sed -i "s/__APP_VERSION__/${APP_VERSION}/g" index.html
 
 # ---- stage 2: unprivileged nginx (runs as uid 101, listens on 8080) ----
 FROM nginxinc/nginx-unprivileged:1.29-alpine
+USER root
+RUN apk upgrade --no-cache
 ENV API_UPSTREAM=http://catalog-api:8000 \
     NGINX_ENVSUBST_FILTER=API_UPSTREAM
 COPY --chown=101:101 nginx/default.conf.template /etc/nginx/templates/default.conf.template
