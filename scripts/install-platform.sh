@@ -45,6 +45,8 @@ helm upgrade --install kps prometheus-community/kube-prometheus-stack -n monitor
 echo "==> Traefik ingress controller"
 helm upgrade --install traefik traefik/traefik -n traefik \
   -f "$ROOT/platform/traefik.yaml" $(v "${TRAEFIK_VERSION:-}") --wait
+# Ingress status = ALB DNS, so ArgoCD can mark Ingresses healthy
+helm upgrade traefik traefik/traefik -n traefik --reuse-values --set "additionalArguments={--providers.kubernetesingress.ingressendpoint.hostname=$(terraform -chdir="$ROOT/terraform" output -raw alb_dns_name)}" --wait
 
 echo "==> Loki"
 helm upgrade --install loki grafana/loki -n monitoring \
