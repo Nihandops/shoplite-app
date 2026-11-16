@@ -1,0 +1,17 @@
+# PROD environment values (merged over helm/shoplite/values.yaml + values-prod.yaml).
+# CI writes image.tag here; ArgoCD waits for a manual sync.
+environment: prod
+image:
+  registry: 396608798769.dkr.ecr.ap-southeast-1.amazonaws.com
+  tag: "3327053"
+web:
+  replicas: 2
+catalogApi:
+  replicas: 2
+  chaos:
+    latencyMs: 0
+    errorRate: 0
+orderWorker:
+  chaos:
+    memoryLeak: false
+    slowDb: false

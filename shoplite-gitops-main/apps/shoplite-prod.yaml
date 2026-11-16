@@ -1,0 +1,28 @@
+# PROD: MANUAL sync (no 'automated' block). New image tags show as OutOfSync until someone presses
+# SYNC in the ArgoCD UI (or: argocd app sync shoplite-prod). Served at http://<ALB>/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shoplite-prod
+  namespace: argocd
+  labels: { app.kubernetes.io/part-of: shoplite, env: prod }
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/Nihandops/shoplite-app.git
+      targetRevision: main
+      path: helm/shoplite
+      helm:
+        releaseName: shoplite
+        valueFiles:
+          - values-prod.yaml
+          - $values/envs/prod/values.yaml
+    - repoURL: https://github.com/Nihandops/shoplite-gitops.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shoplite
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true

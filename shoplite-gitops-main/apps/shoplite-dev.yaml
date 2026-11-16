@@ -1,0 +1,33 @@
+# DEV: automatic sync + self-heal + prune. Served at http://<ALB>/dev/
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shoplite-dev
+  namespace: argocd
+  labels: { app.kubernetes.io/part-of: shoplite, env: dev }
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/Nihandops/shoplite-app.git
+      targetRevision: main
+      path: helm/shoplite
+      helm:
+        releaseName: shoplite
+        valueFiles:
+          - values-dev.yaml
+          - $values/envs/dev/values.yaml
+    - repoURL: https://github.com/Nihandops/shoplite-gitops.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: shoplite-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true        # manual kubectl edits are reverted to the Git state
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }

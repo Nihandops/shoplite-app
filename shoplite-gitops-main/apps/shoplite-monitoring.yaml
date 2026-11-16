@@ -1,0 +1,20 @@
+# Dashboards (JSON in Git -> ConfigMaps) and PrometheusRules, managed by ArgoCD.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: shoplite-monitoring
+  namespace: argocd
+  labels: { app.kubernetes.io/part-of: shoplite }
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Nihandops/shoplite-app.git
+    targetRevision: main
+    path: monitoring
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

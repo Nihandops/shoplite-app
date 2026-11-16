@@ -1,0 +1,14 @@
+# DEV environment values (merged over helm/shoplite/values.yaml + values-dev.yaml).
+# CI writes image.tag here on every push to main.
+environment: dev
+image:
+  registry: 396608798769.dkr.ecr.ap-southeast-1.amazonaws.com
+  tag: "3327053"
+catalogApi:
+  chaos:
+    latencyMs: 0
+    errorRate: 0
+orderWorker:
+  chaos:
+    memoryLeak: false
+    slowDb: false
